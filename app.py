@@ -47,11 +47,11 @@ def get_account_info():
         }
         return jsonify(response), 400, {'Content-Type': 'application/json; charset=utf-8'}
 
-    # Use asyncio.run() to handle the async call in a sync route
+    # Use asyncio.run() to execute the async function in a sync context
     return_data = asyncio.run(lib2.GetAccountInformation(uid, "7", region, "/GetPlayerPersonalShow"))
     formatted_json = json.dumps(return_data, indent=2, ensure_ascii=False)
     return formatted_json, 200, {'Content-Type': 'application/json; charset=utf-8'}
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 3000))
-    app.run(port=port, host='0.0.0.0', debug=False)  # debug=False para produção; corrigido para usar 'port'
+    app.run(port=port, host='0.0.0.0', debug=False)  # debug=False para produção
