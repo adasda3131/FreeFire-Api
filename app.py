@@ -47,12 +47,11 @@ def get_account_info():
         }
         return jsonify(response), 400, {'Content-Type': 'application/json; charset=utf-8'}
 
-    # Correção para asyncio em ambiente sync (Flask/gunicorn)
-    loop = asyncio.get_event_loop_policy().get_event_loop()
-    return_data = loop.run_until_complete(lib2.GetAccountInformation(uid, "7", region, "/GetPlayerPersonalShow"))
+    # Use asyncio.run() to handle the async call in a sync route
+    return_data = asyncio.run(lib2.GetAccountInformation(uid, "7", region, "/GetPlayerPersonalShow"))
     formatted_json = json.dumps(return_data, indent=2, ensure_ascii=False)
     return formatted_json, 200, {'Content-Type': 'application/json; charset=utf-8'}
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 3000))
-    app.run(port=3000, host='0.0.0.0', debug=False)  # debug=False para produção
+    app.run(port=port, host='0.0.0.0', debug=False)  # debug=False para produção; corrigido para usar 'port'
