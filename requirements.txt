@@ -1,7 +1,18 @@
+# Versão do Flask que o autor original usou
 Flask==2.2.2
+
+# Dependência do Flask, sem problemas
 Flask-Cors==3.0.10
-protobuf==3.20.1
+
+# Versão MODERNA do Protobuf, compatível com os arquivos .py do projeto.
+# ISTO RESOLVE O ERRO 'runtime_version'.
+protobuf==4.25.3
+
+# Outras dependências do autor, sem problemas
 pycryptodome==3.15.0
 httpx==0.23.0
 cachetools==5.2.0
-Werkzeug==2.2.2
+
+# Versão do Werkzeug compatível com Flask==2.2.2.
+# ISTO RESOLVE O ERRO 'url_quote'.
+Werkzeug==2.3.8
