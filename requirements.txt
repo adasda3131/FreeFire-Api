@@ -1,6 +1,9 @@
 Flask==3.0.2
 Flask-Cors==4.0.0
-protobuf==4.22.0
+# Remova a versão fixa para permitir a instalação da mais recente e compatível
+protobuf>=4.25.0
+# Adicione grpcio-tools para compilar os arquivos .proto durante o build
+grpcio-tools
 pycryptodome==3.20.0
 httpx==0.27.0
 cachetools==5.3.3
