@@ -1,6 +1,5 @@
 from functools import wraps
 from flask import Flask, request, jsonify
-import os
 from flask_cors import CORS
 from cachetools import TTLCache
 import lib2
@@ -10,7 +9,7 @@ import asyncio
 app = Flask(__name__)
 CORS(app)
 
-# Cache com TTL de 5 minutos
+# Create a cache with a TTL (time-to-live) of 300 seconds (5 minutes)
 cache = TTLCache(maxsize=100, ttl=300)
 
 def cached_endpoint(ttl=300):
@@ -27,6 +26,9 @@ def cached_endpoint(ttl=300):
         return wrapper
     return decorator
 
+
+
+# curl -X GET 'http://127.0.0.1:3000/api/account?uid=1813014615&region=ind'
 @app.route('/api/account')
 @cached_endpoint()
 def get_account_info():
@@ -47,11 +49,10 @@ def get_account_info():
         }
         return jsonify(response), 400, {'Content-Type': 'application/json; charset=utf-8'}
 
-    # Use asyncio.run() to execute the async function in a sync context
     return_data = asyncio.run(lib2.GetAccountInformation(uid, "7", region, "/GetPlayerPersonalShow"))
     formatted_json = json.dumps(return_data, indent=2, ensure_ascii=False)
     return formatted_json, 200, {'Content-Type': 'application/json; charset=utf-8'}
 
+
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 3000))
-    app.run(port=port, host='0.0.0.0', debug=False)  # debug=False para produção
+    app.run(port=3000, host='0.0.0.0', debug=True)
