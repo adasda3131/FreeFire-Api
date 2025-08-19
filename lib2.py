@@ -113,6 +113,7 @@ async def GetAccountInformation(ID, UNKNOWN_ID, regionMain, endpoint):
     })
     encoded_result = await json_to_proto(json_data, main_pb2.GetPlayerPersonalShow())
     payload = aes_cbc_encrypt(MAIN_KEY, MAIN_IV, encoded_result)
+
     regionMain = regionMain.upper()
     if regionMain in SUPPORTED_REGIONS:
         token, region, serverUrl = await create_jwt(regionMain)
@@ -121,6 +122,7 @@ async def GetAccountInformation(ID, UNKNOWN_ID, regionMain, endpoint):
             "error": "Invalid request",
             "message": f"Unsupported 'region' parameter. Supported regions are: {', '.join(SUPPORTED_REGIONS)}."
         }
+
     headers = {
         'User-Agent': "Dalvik/2.1.0 (Linux; U; Android 13; A063 Build/TKQ1.221220.001)",
         'Connection': "Keep-Alive",
@@ -132,16 +134,20 @@ async def GetAccountInformation(ID, UNKNOWN_ID, regionMain, endpoint):
         'X-GA': "v1 1",
         'ReleaseVersion': RELEASEVERSION
     }
+
     async with httpx.AsyncClient() as client:
         response = await client.post(serverUrl + endpoint, data=payload, headers=headers)
         response_content = response.content
         decoded = decode_protobuf(response_content, AccountPersonalShow_pb2.AccountPersonalShowInfo)
-if decoded is None:
-    return {
-        "error": "DecodeError",
-        "message": "Não foi possível decodificar a resposta.",
-        "preview": response_content[:200].decode(errors="ignore")
-    }
 
-message = json.loads(json_format.MessageToJson(decoded))
+        if decoded is None:
+            return {
+                "error": "DecodeError",
+                "message": "Não foi possível decodificar a resposta.",
+                "preview": response_content[:200].decode(errors="ignore")
+            }
+
+        message = json.loads(json_format.MessageToJson(decoded))
         return message
+
+
