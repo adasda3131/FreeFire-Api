@@ -2,69 +2,70 @@ from functools import wraps
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from cachetools import TTLCache
-import lib2
 import json
 import asyncio
+import re
+import logging
 
+
+# Importa a lib async
+import lib2
+
+
+# --------------------
+# Config Flask
+# --------------------
 app = Flask(__name__)
 CORS(app)
-
-# Create a cache with a TTL (time-to-live) of 300 seconds (5 minutes)
-cache = TTLCache(maxsize=100, ttl=300)
+logging.basicConfig(level=logging.INFO)
 
 
-def cached_endpoint(ttl=300):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            cache_key = (request.path, tuple(request.args.items()))
-            if cache_key in cache:
-                return cache[cache_key]
-            else:
-                result = func(*args, **kwargs)
-                cache[cache_key] = result
-                return result
-
-        return wrapper
-
-    return decorator
+# Cache com TTL (5 minutos por padrão)
+CACHE_TTL_SECONDS = 300
+cache = TTLCache(maxsize=256, ttl=CACHE_TTL_SECONDS)
 
 
-# curl -X GET 'http://127.0.0.1:3000/api/account?uid=1813014615&region=ind'
-@app.route("/api/account")
-@cached_endpoint()
-def get_account_info():
-    region = request.args.get("region")
-    uid = request.args.get("uid")
-
-    if not uid:
-        response = {
-            "error": "Invalid request",
-            "message": "Empty 'uid' parameter. Please provide a valid 'uid'.",
-        }
-        return (
-            jsonify(response),
-            400,
-            {"Content-Type": "application/json; charset=utf-8"},
-        )
-
-    if not region:
-        response = {
-            "error": "Invalid request",
-            "message": "Empty 'region' parameter. Please provide a valid 'region'.",
-        }
-        return (
-            jsonify(response),
-            400,
-            {"Content-Type": "application/json; charset=utf-8"},
-        )
-
-    return_data = asyncio.run(
-        lib2.GetAccountInformation(uid, "7", region, "/GetPlayerPersonalShow")
-    )
-    formatted_json = json.dumps(return_data, indent=2, ensure_ascii=False)
-    return formatted_json, 200, {"Content-Type": "application/json; charset=utf-8"}
 
 
-if __name__ == "__main__":
-    app.run(port=3000, host="0.0.0.0", debug=True)
+def cached_endpoint(ttl=CACHE_TTL_SECONDS):
+"""Decora endpoints GET com cache por caminho+querystring.
+Cacheia somente respostas 200 e corpo JSON (string).
+"""
+def decorator(func):
+@wraps(func)
+def wrapper(*args, **kwargs):
+# Inclui método no cache key para segurança (ainda que só GET use)
+cache_key = (
+request.method,
+request.path,
+tuple(sorted(request.args.items())),
+)
+if cache_key in cache:
+app.logger.debug("Cache HIT: %s", cache_key)
+return cache[cache_key]
+
+
+app.logger.debug("Cache MISS: %s", cache_key)
+result = func(*args, **kwargs)
+
+
+try:
+# Só cacheia respostas 200 com body JSON string
+body, status, headers = result
+if status == 200 and isinstance(body, str):
+cache[cache_key] = (body, status, headers)
+except Exception:
+# Se o handler retornou Response/tuple não padrão, ignore cache
+pass
+
+
+return result
+return wrapper
+return decorator
+
+
+
+
+# Helpers de validação
+UID_PATTERN = re.compile(r"^\d{6,20}$") # UID numérico típico (ajuste se necessário)
+app.run(port=3000, host='0.0.0.0', debug=True)
