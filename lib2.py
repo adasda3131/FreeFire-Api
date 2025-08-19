@@ -43,10 +43,16 @@ def aes_cbc_encrypt(key: bytes, iv: bytes, plaintext: bytes) -> bytes:
     padded_plaintext = pad(plaintext)
     ciphertext = aes.encrypt(padded_plaintext)
     return ciphertext
-def decode_protobuf(encoded_data: bytes, message_type: message.Message) -> message.Message:
+def decode_protobuf(encoded_data: bytes, message_type: message.Message):
     message_instance = message_type()
-    message_instance.ParseFromString(encoded_data)
-    return message_instance
+    try:
+        message_instance.ParseFromString(encoded_data)
+        return message_instance
+    except Exception as e:
+        # Log para debug (não quebra app)
+        print("DecodeError:", str(e))
+        print("Bytes recebidos (hex):", encoded_data[:80].hex())
+        return None
 
 
 
@@ -129,5 +135,13 @@ async def GetAccountInformation(ID, UNKNOWN_ID, regionMain, endpoint):
     async with httpx.AsyncClient() as client:
         response = await client.post(serverUrl + endpoint, data=payload, headers=headers)
         response_content = response.content
-        message = json.loads(json_format.MessageToJson(decode_protobuf(response_content, AccountPersonalShow_pb2.AccountPersonalShowInfo)))
+        decoded = decode_protobuf(response_content, AccountPersonalShow_pb2.AccountPersonalShowInfo)
+if decoded is None:
+    return {
+        "error": "DecodeError",
+        "message": "Não foi possível decodificar a resposta.",
+        "preview": response_content[:200].decode(errors="ignore")
+    }
+
+message = json.loads(json_format.MessageToJson(decoded))
         return message
