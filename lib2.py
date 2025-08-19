@@ -89,7 +89,8 @@ async def create_jwt(region: str) -> Tuple[str, str, str]:
 
 async def GetAccountInformation(ID, UNKNOWN_ID, regionMain, endpoint):
     json_data = json.dumps({"a": ID, "b": UNKNOWN_ID})
-    encoded_result = await json_to_proto(json_data, main_pb2.GetPlayerPersonalShow())
+    # ⚡ Passando a classe, não a instância
+    encoded_result = await json_to_proto(json_data, main_pb2.GetPlayerPersonalShow)
     payload = aes_cbc_encrypt(MAIN_KEY, MAIN_IV, encoded_result)
 
     regionMain = regionMain.upper()
