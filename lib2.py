@@ -3,7 +3,7 @@ import json
 from typing import Tuple
 import httpx
 from google.protobuf import json_format
-from your_protos import FreeFire_pb2, main_pb2, AccountPersonalShow_pb2  # ajuste conforme seus imports
+from proto import FreeFire_pb2, main_pb2, AccountPersonalShow_pb2  # ajuste conforme seus imports
 
 MAIN_KEY = b"YOUR_MAIN_KEY_16B"
 MAIN_IV = b"YOUR_MAIN_IV_16B"
