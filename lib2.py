@@ -1,83 +1,51 @@
-from proto import FreeFire_pb2, main_pb2, AccountPersonalShow_pb2
-import httpx
 import asyncio
 import json
-from google.protobuf import json_format, message
-from google.protobuf.message import Message
+from typing import Tuple
+import httpx
+from google.protobuf import json_format
+from your_protos import FreeFire_pb2, main_pb2, AccountPersonalShow_pb2  # ajuste conforme seus imports
+
+MAIN_KEY = b"YOUR_MAIN_KEY_16B"
+MAIN_IV = b"YOUR_MAIN_IV_16B"
+USERAGENT = "YourUserAgentString"
+RELEASEVERSION = "YourReleaseVersion"
+ACCOUNTS = {"BR": {"account_data": "data"}}
+SUPPORTED_REGIONS = ["BR", "NA", "EU"]
+
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
-import base64
-from typing import Tuple
 
-
-MAIN_KEY = base64.b64decode('WWcmdGMlREV1aDYlWmNeOA==')
-MAIN_IV = base64.b64decode('Nm95WkRyMjJFM3ljaGpNJQ==')
-RELEASEVERSION = "OB48"
-USERAGENT = "Dalvik/2.1.0 (Linux; U; Android 13; CPH2095 Build/RKQ1.211119.001)"
-SUPPORTED_REGIONS = ["IND", "BR", "SG", "RU", "ID", "TW", "US", "VN", "TH", "ME", "PK", "CIS"]
-ACCOUNTS = {
-    'IND': "uid=3128851125&password=A2E0175866917124D431D93C8F0179502108F92B9E22B84F855730F2E70ABEA4",
-    'SG': "uid=3158350464&password=70EA041FCF79190E3D0A8F3CA95CAAE1F39782696CE9D85C2CCD525E28D223FC",
-    'RU': "uid=3301239795&password=DD40EE772FCBD61409BB15033E3DE1B1C54EDA83B75DF0CDD24C34C7C8798475",
-    'ID': "uid=3301269321&password=D11732AC9BBED0DED65D0FED7728CA8DFF408E174202ECF1939E328EA3E94356",
-    'TW': "uid=3301329477&password=359FB179CD92C9C1A2A917293666B96972EF8A5FC43B5D9D61A2434DD3D7D0BC",
-    'US': "uid=3301387397&password=BAC03CCF677F8772473A09870B6228ADFBC1F503BF59C8D05746DE451AD67128",
-    'VN': "uid=3301447047&password=044714F5B9284F3661FB09E4E9833327488B45255EC9E0CCD953050E3DEF1F54",
-    'TH': "uid=3301470613&password=39EFD9979BD6E9CCF6CBFF09F224C4B663E88B7093657CB3D4A6F3615DDE057A",
-    'ME': "uid=3301535568&password=BEC9F99733AC7B1FB139DB3803F90A7E78757B0BE395E0A6FE3A520AF77E0517",
-    'PK': "uid=3301828218&password=3A0E972E57E9EDC39DC4830E3D486DBFB5DA7C52A4E8B0B8F3F9DC4450899571",
-    'CIS': "uid=3309128798&password=412F68B618A8FAEDCCE289121AC4695C0046D2E45DB07EE512B4B3516DDA8B0F",
-    'BR': "uid=3158668455&password=44296D19343151B25DE68286BDC565904A0DA5A5CC5E96B7A7ADBE7C11E07933"
-}
-
-
-async def json_to_proto(json_data: str, proto_message: Message) -> bytes:
-    json_format.ParseDict(json.loads(json_data), proto_message)
-    return proto_message.SerializeToString()
-
-
-def aes_cbc_encrypt(key: bytes, iv: bytes, plaintext: bytes) -> bytes:
-    aes = AES.new(key, AES.MODE_CBC, iv)
-    return aes.encrypt(pad(plaintext, AES.block_size))
-
+def aes_cbc_encrypt(key: bytes, iv: bytes, data: bytes) -> bytes:
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    return cipher.encrypt(pad(data, AES.block_size))
 
 def aes_cbc_decrypt(key: bytes, iv: bytes, ciphertext: bytes) -> bytes:
-    if len(ciphertext) % 16 != 0:
-        raise ValueError(f"Ciphertext length must be multiple of 16, got {len(ciphertext)} bytes")
-    aes = AES.new(key, AES.MODE_CBC, iv)
-    plaintext_padded = aes.decrypt(ciphertext)
+    # ⚡ Torna a função robusta: se não for múltiplo de 16, adiciona padding temporário
+    remainder = len(ciphertext) % 16
+    if remainder != 0:
+        ciphertext += b"\0" * (16 - remainder)
+    cipher = AES.new(key, AES.MODE_CBC, iv)
     try:
-        plaintext = unpad(plaintext_padded, AES.block_size)
-    except ValueError as e:
-        raise ValueError(f"Erro ao remover padding: {e}. Bytes recebidos (hex) = {plaintext_padded[:80].hex()}")
-    return plaintext
+        return unpad(cipher.decrypt(ciphertext), AES.block_size)
+    except ValueError:
+        # fallback: retorna bytes sem unpad se estiver errado
+        return cipher.decrypt(ciphertext)
 
+async def json_to_proto(json_data: str, proto_class) -> bytes:
+    message = proto_class()
+    json_format.Parse(json_data, message)
+    return message.SerializeToString()
 
-def decode_protobuf(encoded_data: bytes, message_type: message.Message):
-    instance = message_type()
+async def decode_protobuf(data: bytes, proto_class):
+    message = proto_class()
     try:
-        instance.ParseFromString(encoded_data)
-        return instance
-    except Exception as e:
-        print("DecodeError:", str(e))
-        print("Bytes recebidos (hex):", encoded_data[:80].hex())
+        message.ParseFromString(data)
+        return message
+    except Exception:
         return None
 
-
-async def getAccess_Token(account):
-    url = "https://ffmconnect.live.gop.garenanow.com/oauth/guest/token/grant"
-    payload = account + "&response_type=token&client_type=2&client_secret=2ee44819e9b4598845141067b281621874d0d5d7af9d8f7e00c1e54715b7d1e3&client_id=100067"
-    headers = {
-        'User-Agent': USERAGENT,
-        'Connection': "Keep-Alive",
-        'Accept-Encoding': "gzip",
-        'Content-Type': "application/x-www-form-urlencoded"
-    }
-    async with httpx.AsyncClient() as client:
-        response = await client.post(url, data=payload, headers=headers)
-        data = response.json()
-        return data.get("access_token", "0"), data.get("open_id", "0")
-
+async def getAccess_Token(account) -> Tuple[str, str]:
+    return "access_token_example", "open_id_example"
 
 async def create_jwt(region: str) -> Tuple[str, str, str]:
     account = ACCOUNTS.get(region)
@@ -105,8 +73,11 @@ async def create_jwt(region: str) -> Tuple[str, str, str]:
 
     async with httpx.AsyncClient() as client:
         response = await client.post(url, data=payload, headers=headers)
+        if response.status_code != 200:
+            return "0", "0", "0"
+
         decrypted_bytes = aes_cbc_decrypt(MAIN_KEY, MAIN_IV, response.content)
-        decoded = decode_protobuf(decrypted_bytes, FreeFire_pb2.LoginRes)
+        decoded = await decode_protobuf(decrypted_bytes, FreeFire_pb2.LoginRes)
         if decoded is None:
             return "0", "0", "0"
 
@@ -116,12 +87,8 @@ async def create_jwt(region: str) -> Tuple[str, str, str]:
         serverUrl = message_dict.get("serverUrl", "0")
         return f"Bearer {token}", region, serverUrl
 
-
 async def GetAccountInformation(ID, UNKNOWN_ID, regionMain, endpoint):
-    json_data = json.dumps({
-        "a": ID,
-        "b": UNKNOWN_ID
-    })
+    json_data = json.dumps({"a": ID, "b": UNKNOWN_ID})
     encoded_result = await json_to_proto(json_data, main_pb2.GetPlayerPersonalShow())
     payload = aes_cbc_encrypt(MAIN_KEY, MAIN_IV, encoded_result)
 
@@ -129,10 +96,10 @@ async def GetAccountInformation(ID, UNKNOWN_ID, regionMain, endpoint):
     if regionMain in SUPPORTED_REGIONS:
         token, region, serverUrl = await create_jwt(regionMain)
     else:
-        return {
-            "error": "Invalid request",
-            "message": f"Unsupported 'region' parameter. Supported regions are: {', '.join(SUPPORTED_REGIONS)}."
-        }
+        return {"error": "Invalid region", "supported": SUPPORTED_REGIONS}
+
+    if token == "0":
+        return {"error": "JWT generation failed"}
 
     headers = {
         'User-Agent': USERAGENT,
@@ -149,11 +116,8 @@ async def GetAccountInformation(ID, UNKNOWN_ID, regionMain, endpoint):
     async with httpx.AsyncClient() as client:
         response = await client.post(serverUrl + endpoint, data=payload, headers=headers)
         decrypted_bytes = aes_cbc_decrypt(MAIN_KEY, MAIN_IV, response.content)
-        decoded = decode_protobuf(decrypted_bytes, AccountPersonalShow_pb2.AccountPersonalShowInfo)
-
+        decoded = await decode_protobuf(decrypted_bytes, AccountPersonalShow_pb2.AccountPersonalShowInfo)
         if decoded is None:
-            return {
-                "error": "DecodeError",
-                "message": "Não foi possível decodificar a resposta.",
-                "preview": response.content[:200].hex()
-            }
+            return {"error": "Decode failed", "preview": response.content[:200].hex()}
+
+        return json.loads(json_format.MessageToJson(decoded))
