@@ -27,17 +27,17 @@ cache = TTLCache(maxsize=256, ttl=CACHE_TTL_SECONDS)
 def cached_endpoint(ttl=CACHE_TTL_SECONDS):
 
 def decorator(func):
-@wraps(func)
+  @wraps(func)
 def wrapper(*args, **kwargs):
 
-cache_key = (
-request.method,
-request.path,
-tuple(sorted(request.args.items())),
-)
-if cache_key in cache:
-app.logger.debug("Cache HIT: %s", cache_key)
-return cache[cache_key]
+  cache_key = (
+  request.method,
+  request.path,
+  tuple(sorted(request.args.items())),
+  )
+  if cache_key in cache:
+    app.logger.debug("Cache HIT: %s", cache_key)
+    return cache[cache_key]
 
 
 app.logger.debug("Cache MISS: %s", cache_key)
@@ -46,17 +46,17 @@ result = func(*args, **kwargs)
 
 try:
 
-body, status, headers = result
-if status == 200 and isinstance(body, str):
-cache[cache_key] = (body, status, headers)
-except Exception:
+  body, status, headers = result
+  if status == 200 and isinstance(body, str):
+  cache[cache_key] = (body, status, headers)
+  except Exception:
 
 pass
 
 
-return result
-return wrapper
-return decorator
+  return result
+  return wrapper
+  return decorator
 
 
 
