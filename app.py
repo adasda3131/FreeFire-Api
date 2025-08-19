@@ -1,66 +1,76 @@
-from functools import wraps
+import asyncio
+import functools
+import time
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from cachetools import TTLCache
-import json
-import asyncio
-import re
-import logging
-
-
 import lib2
 
-
-
+# ========================
+# Configuração do Flask
+# ========================
 app = Flask(__name__)
 CORS(app)
-logging.basicConfig(level=logging.INFO)
 
+# ========================
+# Cache simples em memória
+# ========================
+cache_store = {}
 
+def cache_get(ttl: int = 30):
+    """Decora endpoints GET com cache por caminho+querystring."""
 
-CACHE_TTL_SECONDS = 300
-cache = TTLCache(maxsize=256, ttl=CACHE_TTL_SECONDS)
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            cache_key = f"{request.path}?{request.query_string.decode()}"
+            now = time.time()
 
+            # Se existe no cache e ainda não expirou
+            if cache_key in cache_store:
+                value, expires_at = cache_store[cache_key]
+                if now < expires_at:
+                    return jsonify(value)
 
+            # Caso contrário, gera a resposta
+            result = func(*args, **kwargs)
+            if isinstance(result, dict):
+                cache_store[cache_key] = (result, now + ttl)
+            return jsonify(result)
+        return wrapper
+    return decorator
 
+# ========================
+# Endpoint principal
+# ========================
+@app.route("/api/account", methods=["GET"])
+@cache_get(ttl=30)
+def get_account_info():
+    """Busca informações de conta FreeFire."""
+    uid = request.args.get("uid")
+    region = request.args.get("region", "").upper()
+    unknown_id = request.args.get("unknown_id", "0")
+    endpoint = "/Account/GetAccountPersonalShow"
 
-def cached_endpoint(ttl=CACHE_TTL_SECONDS):
+    if not uid or not region:
+        return {"error": "Missing required parameters: uid, region"}
 
-def decorator(func):
-  @wraps(func)
-def wrapper(*args, **kwargs):
+    try:
+        result = asyncio.run(
+            lib2.GetAccountInformation(uid, unknown_id, region, endpoint)
+        )
+        return result
+    except Exception as e:
+        return {"error": str(e)}
 
-  cache_key = (
-  request.method,
-  request.path,
-  tuple(sorted(request.args.items())),
-  )
-  if cache_key in cache:
-    app.logger.debug("Cache HIT: %s", cache_key)
-    return cache[cache_key]
+# ========================
+# Healthcheck
+# ========================
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"})
 
-
-app.logger.debug("Cache MISS: %s", cache_key)
-result = func(*args, **kwargs)
-
-
-try:
-
-  body, status, headers = result
-  if status == 200 and isinstance(body, str):
-  cache[cache_key] = (body, status, headers)
-  except Exception:
-
-pass
-
-
-  return result
-  return wrapper
-  return decorator
-
-
-
-
-
-UID_PATTERN = re.compile(r"^\d{6,20}$") 
-app.run(port=3000, host='0.0.0.0', debug=True)
+# ========================
+# Main
+# ========================
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080, debug=True)
