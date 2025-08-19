@@ -1,3 +1,6 @@
+Perfeito! Vou atualizar o seu código `lib2.py` completo com a função `aes_cbc_decrypt` corrigida, usando `unpad` e verificando o tamanho do ciphertext. Aqui está a versão ajustada:
+
+```python
 from proto import FreeFire_pb2, main_pb2, AccountPersonalShow_pb2
 import httpx
 import asyncio
@@ -5,6 +8,7 @@ import json
 from google.protobuf import json_format, message
 from google.protobuf.message import Message
 from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
 import base64
 from typing import Tuple
 
@@ -35,21 +39,21 @@ async def json_to_proto(json_data: str, proto_message: Message) -> bytes:
     return proto_message.SerializeToString()
 
 
-def pad(text: bytes) -> bytes:
-    padding_length = AES.block_size - (len(text) % AES.block_size)
-    return text + bytes([padding_length] * padding_length)
-
-
 def aes_cbc_encrypt(key: bytes, iv: bytes, plaintext: bytes) -> bytes:
     aes = AES.new(key, AES.MODE_CBC, iv)
-    return aes.encrypt(pad(plaintext))
+    return aes.encrypt(pad(plaintext, AES.block_size))
 
 
 def aes_cbc_decrypt(key: bytes, iv: bytes, ciphertext: bytes) -> bytes:
+    if len(ciphertext) % 16 != 0:
+        raise ValueError(f"Ciphertext length must be multiple of 16, got {len(ciphertext)} bytes")
     aes = AES.new(key, AES.MODE_CBC, iv)
     plaintext_padded = aes.decrypt(ciphertext)
-    padding_length = plaintext_padded[-1]
-    return plaintext_padded[:-padding_length]
+    try:
+        plaintext = unpad(plaintext_padded, AES.block_size)
+    except ValueError as e:
+        raise ValueError(f"Erro ao remover padding: {e}. Bytes recebidos (hex) = {plaintext_padded[:80].hex()}")
+    return plaintext
 
 
 def decode_protobuf(encoded_data: bytes, message_type: message.Message):
@@ -157,8 +161,4 @@ async def GetAccountInformation(ID, UNKNOWN_ID, regionMain, endpoint):
                 "preview": response.content[:200].hex()
             }
 
-        return json.loads(json_format.MessageToJson(decoded))
-
-
-# Exemplo de execução:
-# asyncio.run(GetAccountInformation(12345, 67890, "BR", "/get_player_info"))
+```
