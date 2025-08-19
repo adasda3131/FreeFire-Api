@@ -32,28 +32,35 @@ ACCOUNTS = {
 
 async def json_to_proto(json_data: str, proto_message: Message) -> bytes:
     json_format.ParseDict(json.loads(json_data), proto_message)
-    serialized_data = proto_message.SerializeToString()
-    return serialized_data
+    return proto_message.SerializeToString()
+
+
 def pad(text: bytes) -> bytes:
     padding_length = AES.block_size - (len(text) % AES.block_size)
-    padding = bytes([padding_length] * padding_length)
-    return text + padding
+    return text + bytes([padding_length] * padding_length)
+
+
 def aes_cbc_encrypt(key: bytes, iv: bytes, plaintext: bytes) -> bytes:
     aes = AES.new(key, AES.MODE_CBC, iv)
-    padded_plaintext = pad(plaintext)
-    ciphertext = aes.encrypt(padded_plaintext)
-    return ciphertext
+    return aes.encrypt(pad(plaintext))
+
+
+def aes_cbc_decrypt(key: bytes, iv: bytes, ciphertext: bytes) -> bytes:
+    aes = AES.new(key, AES.MODE_CBC, iv)
+    plaintext_padded = aes.decrypt(ciphertext)
+    padding_length = plaintext_padded[-1]
+    return plaintext_padded[:-padding_length]
+
+
 def decode_protobuf(encoded_data: bytes, message_type: message.Message):
-    message_instance = message_type()
+    instance = message_type()
     try:
-        message_instance.ParseFromString(encoded_data)
-        return message_instance
+        instance.ParseFromString(encoded_data)
+        return instance
     except Exception as e:
-        # Log para debug (não quebra app)
         print("DecodeError:", str(e))
         print("Bytes recebidos (hex):", encoded_data[:80].hex())
         return None
-
 
 
 async def getAccess_Token(account):
@@ -71,19 +78,18 @@ async def getAccess_Token(account):
         return data.get("access_token", "0"), data.get("open_id", "0")
 
 
-
-
 async def create_jwt(region: str) -> Tuple[str, str, str]:
     account = ACCOUNTS.get(region)
     access_token, open_id = await getAccess_Token(account)
     json_data = json.dumps({
-      "open_id": open_id,
-      "open_id_type": "4",
-      "login_token": access_token,
-      "orign_platform_type": "4"
+        "open_id": open_id,
+        "open_id_type": "4",
+        "login_token": access_token,
+        "orign_platform_type": "4"
     })
     encoded_result = await json_to_proto(json_data, FreeFire_pb2.LoginReq())
     payload = aes_cbc_encrypt(MAIN_KEY, MAIN_IV, encoded_result)
+
     url = "https://loginbp.ggblueshark.com/MajorLogin"
     headers = {
         'User-Agent': USERAGENT,
@@ -95,15 +101,19 @@ async def create_jwt(region: str) -> Tuple[str, str, str]:
         'X-GA': "v1 1",
         'ReleaseVersion': RELEASEVERSION
     }
+
     async with httpx.AsyncClient() as client:
         response = await client.post(url, data=payload, headers=headers)
-        response_content = response.content
-        message = json.loads(json_format.MessageToJson(decode_protobuf(response_content, FreeFire_pb2.LoginRes)))
-        token = message.get("token", "0")
-        region = message.get("lockRegion", "0")
-        serverUrl = message.get("serverUrl", "0")
-        return f"Bearer {token}", region, serverUrl
+        decrypted_bytes = aes_cbc_decrypt(MAIN_KEY, MAIN_IV, response.content)
+        decoded = decode_protobuf(decrypted_bytes, FreeFire_pb2.LoginRes)
+        if decoded is None:
+            return "0", "0", "0"
 
+        message_dict = json.loads(json_format.MessageToJson(decoded))
+        token = message_dict.get("token", "0")
+        region = message_dict.get("lockRegion", "0")
+        serverUrl = message_dict.get("serverUrl", "0")
+        return f"Bearer {token}", region, serverUrl
 
 
 async def GetAccountInformation(ID, UNKNOWN_ID, regionMain, endpoint):
@@ -124,7 +134,7 @@ async def GetAccountInformation(ID, UNKNOWN_ID, regionMain, endpoint):
         }
 
     headers = {
-        'User-Agent': "Dalvik/2.1.0 (Linux; U; Android 13; A063 Build/TKQ1.221220.001)",
+        'User-Agent': USERAGENT,
         'Connection': "Keep-Alive",
         'Accept-Encoding': "gzip",
         'Content-Type': "application/octet-stream",
@@ -137,17 +147,18 @@ async def GetAccountInformation(ID, UNKNOWN_ID, regionMain, endpoint):
 
     async with httpx.AsyncClient() as client:
         response = await client.post(serverUrl + endpoint, data=payload, headers=headers)
-        response_content = response.content
-        decoded = decode_protobuf(response_content, AccountPersonalShow_pb2.AccountPersonalShowInfo)
+        decrypted_bytes = aes_cbc_decrypt(MAIN_KEY, MAIN_IV, response.content)
+        decoded = decode_protobuf(decrypted_bytes, AccountPersonalShow_pb2.AccountPersonalShowInfo)
 
         if decoded is None:
             return {
                 "error": "DecodeError",
                 "message": "Não foi possível decodificar a resposta.",
-                "preview": response_content[:200].decode(errors="ignore")
+                "preview": response.content[:200].hex()
             }
 
-        message = json.loads(json_format.MessageToJson(decoded))
-        return message
+        return json.loads(json_format.MessageToJson(decoded))
 
 
+# Exemplo de execução:
+# asyncio.run(GetAccountInformation(12345, 67890, "BR", "/get_player_info"))
