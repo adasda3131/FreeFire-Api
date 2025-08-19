@@ -1,6 +1,3 @@
-Perfeito! Vou atualizar o seu código `lib2.py` completo com a função `aes_cbc_decrypt` corrigida, usando `unpad` e verificando o tamanho do ciphertext. Aqui está a versão ajustada:
-
-```python
 from proto import FreeFire_pb2, main_pb2, AccountPersonalShow_pb2
 import httpx
 import asyncio
@@ -160,5 +157,3 @@ async def GetAccountInformation(ID, UNKNOWN_ID, regionMain, endpoint):
                 "message": "Não foi possível decodificar a resposta.",
                 "preview": response.content[:200].hex()
             }
-
-```
