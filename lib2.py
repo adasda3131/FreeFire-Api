@@ -5,6 +5,7 @@ import httpx
 from google.protobuf import json_format
 from proto import FreeFire_pb2, main_pb2, AccountPersonalShow_pb2  # ajuste conforme seus imports
 
+# 🔑 Defina sua chave e IV aqui
 MAIN_KEY = b"YOUR_MAIN_KEY_16B"
 MAIN_IV = b"YOUR_MAIN_IV_16B"
 USERAGENT = "YourUserAgentString"
@@ -15,12 +16,21 @@ SUPPORTED_REGIONS = ["BR", "NA", "EU"]
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 
+# 🔧 Ajuste automático da chave e IV para evitar erro de tamanho
+def adjust_key_iv(key: bytes, iv: bytes) -> tuple[bytes, bytes]:
+    if len(key) not in (16, 24, 32):
+        key = key[:32].ljust(32, b'\0')  # corta ou completa até 32 bytes
+    if len(iv) != 16:
+        iv = iv[:16].ljust(16, b'\0')  # corta ou completa até 16 bytes
+    return key, iv
+
 def aes_cbc_encrypt(key: bytes, iv: bytes, data: bytes) -> bytes:
+    key, iv = adjust_key_iv(key, iv)
     cipher = AES.new(key, AES.MODE_CBC, iv)
     return cipher.encrypt(pad(data, AES.block_size))
 
 def aes_cbc_decrypt(key: bytes, iv: bytes, ciphertext: bytes) -> bytes:
-    # ⚡ Torna a função robusta: se não for múltiplo de 16, adiciona padding temporário
+    key, iv = adjust_key_iv(key, iv)
     remainder = len(ciphertext) % 16
     if remainder != 0:
         ciphertext += b"\0" * (16 - remainder)
@@ -28,7 +38,6 @@ def aes_cbc_decrypt(key: bytes, iv: bytes, ciphertext: bytes) -> bytes:
     try:
         return unpad(cipher.decrypt(ciphertext), AES.block_size)
     except ValueError:
-        # fallback: retorna bytes sem unpad se estiver errado
         return cipher.decrypt(ciphertext)
 
 async def json_to_proto(json_data: str, proto_class) -> bytes:
@@ -89,7 +98,6 @@ async def create_jwt(region: str) -> Tuple[str, str, str]:
 
 async def GetAccountInformation(ID, UNKNOWN_ID, regionMain, endpoint):
     json_data = json.dumps({"a": ID, "b": UNKNOWN_ID})
-    # ⚡ Passando a classe, não a instância
     encoded_result = await json_to_proto(json_data, main_pb2.GetPlayerPersonalShow)
     payload = aes_cbc_encrypt(MAIN_KEY, MAIN_IV, encoded_result)
 
